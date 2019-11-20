@@ -1,3 +1,14 @@
+//Imperial College London - Department of Computing
+//MSc Computing CO157 Object-Oriented Design & Programming
+//Assessed Exercise No. 1
+//Mailpunk
+//
+//Created by: Pablo Navajas Helguero
+//Date: 20th November 2019
+//
+//File: imap.hpp
+
+
 #ifndef IMAP_H
 #define IMAP_H
 #include "imaputils.hpp"
@@ -6,18 +17,25 @@
 #include <functional>
 
 
-
 namespace IMAP {
 
-  class Session;
-  
+  /**
+   * class Foward declaration to use the type "Session" in Message class
+   */
+  class Session; 
+
+
   class Message {
-    
-  public:
 
-    int uid;
-
+    /**
+     * Data member to keep information on the Session   
+     */
     Session* session;
+
+    /**
+     * Data members holding message information
+     */
+    int uid;
     
     std::string body;
 
@@ -25,21 +43,24 @@ namespace IMAP {
 
     std::string from;
 
+    /**
+     * Lambda without parameter or return to call updateUI
+     */
     std::function<void()> MsgNewUI;
 
-    Message(Session* Session, int UID, std::function<void()> updateUI);
-
-    
-    
+    /*
+     * Member functions to retrieve attributes data
+     */
     void normform(clist * fromlist);
     
     void getAtts(struct mailimap_msg_att* msg_att);
     
+  public:
 
+    Message(Session* Session, int UID, std::function<void()> updateUI);
     /**
      * Get the body of the message. You may chose to either include the headers or not.
      */   
-    //void getMessageBody(clist * contents);
     std::string getBody();
     /**
      * Get one of the descriptor fields (subject, from, ...)
@@ -53,8 +74,6 @@ namespace IMAP {
   
   class Session {
 
-  public:
-    
     int NoMessages;
 
     std::string mailbox;
@@ -63,26 +82,45 @@ namespace IMAP {
 
     Message** messages;
 
+    /**
+     * Declare Message class as friend to access session information (imap)
+     */    
+    friend class Message;
+    
+    /**
+     * Lambda without parameter or return to call updateUI
+     */    
     std::function<void()> SessNewUI;
-    
-    Session(std::function<void()> updateUI);
-    
-    ~Session();
-    
-    void CountMessages();
 
-    int getUID(mailimap_msg_att* msg_att);
+    /**
+     * Member functions to retrieve Messages data
+     */
+    void CountMessages();                   //Number of mesages
     
+    int getUID(mailimap_msg_att* msg_att);  //Unique identifier
+    
+  public:
+
+    /**
+     * Constructor declaration
+     */
+    Session(std::function<void()> updateUI);
+
+    /**
+     * Destructor declaration
+     */
+    ~Session();
+
     /**
      * Get all messages in the INBOX mailbox terminated by a nullptr (like we did in class)
      */
-    
     Message** getMessages();
-    
+
     /**
      * connect to the specified server (143 is the standard unencrypte imap port)
+     *
+     * Using default argument for port 
      */
-    
     void connect(std::string const& server, size_t port = 143);
     
     /**
