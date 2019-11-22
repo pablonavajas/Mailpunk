@@ -118,7 +118,7 @@ std::string Message::getField(std::string fieldname){
    * Create a clist holding the fieldname, a list of headers, and 
    * 
    * a header section structure to define the header attribute to be fetched
-   */ 
+   */  
   clist * headlist = clist_new();
 
   char field[fieldname.length() + 1];
@@ -294,6 +294,9 @@ Message** Session::getMessages(){
    * Initialise the required number of message instances
    */
   CountMessages();
+
+  if (!NoMessages)
+    return new Message*[1]{};
 
   messages = new Message*[NoMessages + 1];
   
