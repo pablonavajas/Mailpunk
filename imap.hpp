@@ -38,11 +38,15 @@ namespace IMAP {
     int uid;
     
     std::string msg_cont;
-
+    /**
+     * Declare Session class as friend to access message information (uid)
+     */    
+    friend class Session;
+    
     /**
      * Lambda without parameter or return to call updateUI
      */
-    std::function<void()> MsgNewUI;
+    std::function<void()> updateUI;
 
     /*
      * Member functions to retrieve attributes data
@@ -53,7 +57,7 @@ namespace IMAP {
     
   public:
 
-    Message(Session* Session, int UID, std::function<void()> updateUI);
+    Message(Session* Session, int UID);
     /**
      * Get the body of the message. You may chose to either include the headers or not.
      */   
@@ -86,7 +90,7 @@ namespace IMAP {
     /**
      * Lambda without parameter or return to call updateUI
      */    
-    std::function<void()> SessNewUI;
+    std::function<void()> updateUI;
 
     /**
      * Member functions to retrieve Messages data
@@ -94,6 +98,11 @@ namespace IMAP {
     void CountMessages();                   //Number of mesages
     
     int getUID(mailimap_msg_att* msg_att);  //Unique identifier
+
+    /**
+     * Member function to delete all messages avoiding memory leak
+     */
+    void deleteExcept(int msg_uid);
     
   public:
 

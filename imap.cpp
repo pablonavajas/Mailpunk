@@ -18,8 +18,7 @@ using namespace IMAP;
 /**
  * In-line constructor definition for updateUI function
  */
-Message::Message(Session* Session, int UID, std::function<void()> SessNewUI): MsgNewUI(SessNewUI)
-{
+Message::Message(Session* Session, int UID): session(Session) {
   /**
    * Initialise Mesage data members in constructor
    */
@@ -119,20 +118,7 @@ std::string Message::getField(std::string fieldname){
    * 
    * a header section structure to define the header attribute to be fetched
    */  
-  clist * headlist = clist_new();
-
-  char field[fieldname.length() + 1];
-
-  copy(fieldname.begin(), fieldname.end(), field);
-
-  field[fieldname.length() + 1] = '\0';
-  
-  clist_append(headlist, field);
-  
-  
-  struct mailimap_header_list* imap_headList = mailimap_header_list_new(headlist);
-
-  struct mailimap_section* headSection = mailimap_section_new_header_fields(imap_headList);
+  struct mailimap_section* headSection = mailimap_section_new_header();
 
   mailimap_fetch_att* head_att = mailimap_fetch_att_new_body_section(headSection);
 
@@ -165,6 +151,10 @@ std::string Message::getField(std::string fieldname){
   /**
    * Deallocate the necessary memory
    */
+  mailimap_fetch_list_free(contents);
+  
+  mailimap_fetch_type_free(fetchStruct);
+  
   mailimap_set_free(set);
 
   
@@ -180,7 +170,6 @@ void Message::deleteFromMailbox(){
   /**
    * Create set to fetch a single message, list of flags and \Deleted flag object
    */
-  
   struct mailimap_set* set = mailimap_set_new_single(uid);
 
   struct mailimap_flag_list* DelFlagList = mailimap_flag_list_new_empty();
@@ -201,19 +190,20 @@ void Message::deleteFromMailbox(){
 
   check_error( mailimap_expunge(session->imap), ErrMsg);
   
-  
   /**
    * Deallocate the necessary memory
    */
+  mailimap_store_att_flags_free(store_att);
   
-  store_att = mailimap_store_att_flags_new(store_att->fl_sign,store_att->fl_silent,DelFlagList);
-
   mailimap_set_free(set);
-  
+
+  session->deleteExcept(uid);
   /**
    * Call for UI update
    */
-  MsgNewUI();
+  session->updateUI();
+  
+  delete this;
 }
 
 
@@ -221,7 +211,7 @@ void Message::deleteFromMailbox(){
 /**
  * In-line constructor definition for updateUI function
  */
-Session::Session(std::function<void()> updateUI): SessNewUI(updateUI)
+Session::Session(std::function<void()> updateUI): updateUI(updateUI)
 {
   /**
    * Create new IMAP session and initialise data members
@@ -238,6 +228,8 @@ Session::~Session(){
   /**
    * Free structures from IMAP session and logout
    */
+  deleteExcept(-1);
+  
   mailimap_logout(imap);
   mailimap_free(imap);
 }
@@ -287,6 +279,18 @@ int Session::getUID(mailimap_msg_att* msg_att) {
   }
 }
 
+void Session::deleteExcept(int msg_uid) {
+
+  for (int i = 0 ; i < NoMessages ; i++) {
+
+    if (messages[i]->uid != msg_uid) {
+      
+      delete messages[i];
+    }
+  }
+
+  delete [] messages;
+}
 
 Message** Session::getMessages(){
 
@@ -331,20 +335,20 @@ Message** Session::getMessages(){
     auto uid = getUID(msg_att);
 
     if (uid) {
- 
+  
       /**
        * Modify instance of Message class passing on Session and message
        *
        * information through the implicit pointer: this and its UID
        */
-      messages[count] = new Message(this, uid, SessNewUI);
+      messages[count] = new Message(this, uid);
          
       count++;
     }
   }
 
   messages[count] = nullptr;
-      
+  
   /**
    * Deallocate the necessary memory
    */
@@ -352,7 +356,7 @@ Message** Session::getMessages(){
   mailimap_fetch_list_free(MessageList);
   mailimap_fetch_type_free(fetchStruct);
   mailimap_set_free(set);
-
+  
   return messages;
 }
 
