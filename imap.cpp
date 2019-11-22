@@ -10,7 +10,9 @@
 
 
 #include "imap.hpp"
+#include <sstream>
 
+using namespace std;
 using namespace IMAP;
 
 /**
@@ -21,133 +23,155 @@ Message::Message(Session* Session, int UID, std::function<void()> SessNewUI): Ms
   /**
    * Initialise Mesage data members in constructor
    */
-  body = "";
-  subject = "";
-  from = "";
+  msg_cont = "";
   uid = UID;
 
-  session = Session;
-
-  /**
-   * Create set to fetch a single message, fetch structure
-   * 
-   * to retrieve specific contents
-   */
-  mailimap_set* set = mailimap_set_new_single(uid);
-  
-  struct mailimap_fetch_type* fetchStruct = mailimap_fetch_type_new_fetch_att_list_empty();
-
-  clist * contents;
-
-  /**
-   * Add headers attribute to fetching list
-   */
-  auto headers_att = mailimap_fetch_att_new_envelope();
-
-  mailimap_fetch_type_new_fetch_att_list_add(fetchStruct, headers_att);
-
-  /**
-   * Add body attribute to fetching list
-   */
-  struct mailimap_section * bodySection = mailimap_section_new(nullptr);
-  
-  auto body_att = mailimap_fetch_att_new_body_section(bodySection);
-
-  mailimap_fetch_type_new_fetch_att_list_add(fetchStruct, body_att);
-  
-  /**
-   * Retrieve attributes data from the selected message
-   */
-  std::string ErrMsg = "Unable to retrieve message";
-  
-  check_error( mailimap_uid_fetch(session->imap, set, fetchStruct, &contents), ErrMsg);
-
-  /**
-   * Get the list of attributes from the first clist and get specified attributtes
-   */
-  auto msg_att = (struct mailimap_msg_att*)clist_content(clist_begin(contents));
-
-  getAtts(msg_att);
-  
-  /**
-   * Deallocate specified memory
-   */
-  mailimap_fetch_list_free(contents);
-  
-  mailimap_fetch_type_free(fetchStruct);
-
-  mailimap_set_free(set);
+  session = Session; 
 }
 
 
-void Message::getAtts(struct mailimap_msg_att* msg_att) {
+void Message::getAtts(clist* contents) {
 
   /**
-   * For each attribute in the list, check if it is 
+   * For each attribute in the clist, check if it is 
    * 
    * the body, the subject or the "from" field
    */
+  auto msg_att = (struct mailimap_msg_att*)clist_content(clist_begin(contents));
+  
   for (clistiter* attidx = clist_begin(msg_att->att_list) ; attidx != nullptr ; attidx = clist_next(attidx) ) {
 
     auto item = (struct mailimap_msg_att_item*) clist_content(attidx);
 
     if (item->att_type == MAILIMAP_MSG_ATT_ITEM_STATIC) {
 
-      if (item->att_data.att_static->att_type == MAILIMAP_MSG_ATT_BODY_SECTION)
-	body = item->att_data.att_static->att_data.att_body_section->sec_body_part;
-
-      else if (item->att_data.att_static->att_type == MAILIMAP_MSG_ATT_ENVELOPE) {
-
-	subject = item->att_data.att_static->att_data.att_env->env_subject;
-
-	normform(item->att_data.att_static->att_data.att_env->env_from->frm_list);
+      if (item->att_data.att_static->att_type == MAILIMAP_MSG_ATT_BODY_SECTION) {
+	
+	msg_cont = item->att_data.att_static->att_data.att_body_section->sec_body_part;
       }
     }
   }   
 }
 
 
-void Message::normform(clist * fromlist) {
+std::string Message::getBody(){
+  /**
+   * Create set to fetch a single message, and fetch structure
+   * 
+   * to retrieve only the body of the message
+   */ 
+  mailimap_set* set = mailimap_set_new_single(uid);
+  
+  struct mailimap_fetch_type* fetchStruct = mailimap_fetch_type_new_fetch_att_list_empty();
+
+  clist * contents;
+
+  struct mailimap_section * bodySection = mailimap_section_new(nullptr);
+  
+  auto body_att = mailimap_fetch_att_new_body_section(bodySection);
 
   /**
-   * For each attribute in the list, check if it has 
-   * 
-   * mailbox and host, and build "from" field
+   * Add body attribute to fetching list and fetch
    */
-  for (clistiter * fromidx = clist_begin(fromlist) ; fromidx != nullptr ; fromidx = clist_next(fromidx) ) {
+  mailimap_fetch_type_new_fetch_att_list_add(fetchStruct, body_att);
 
-    auto email = (mailimap_address*) clist_content(fromidx);
+  std::string ErrMsg = "Unable to retrieve message";
+  
+  check_error( mailimap_uid_fetch(session->imap, set, fetchStruct, &contents), ErrMsg);
 
-    if (email->ad_mailbox_name and email->ad_host_name) {
+  getAtts(contents);
+  
+  
+  /**
+   * Deallocate the necessary memory
+   */
+  mailimap_fetch_list_free(contents);
+  
+  mailimap_fetch_type_free(fetchStruct);
 
-      from += email->ad_mailbox_name;
-      from += '@';
-      from += email->ad_host_name;
-      from += " ; ";
-    }
-  }
+  mailimap_set_free(set);
+
+  
+  if (msg_cont.empty())
+    return "<>";
+  
+  return msg_cont;
 }
 
 
-std::string Message::getBody(){
+void Message::extractfield(const std::string &field) {
   /**
-   * Display retrieved body content
+   * Extract field content up to carriage return character
    */
-  return body;
+  unsigned first = msg_cont.find(field + ':');
+
+  unsigned pos_delim = first + field.length() + 2;
+
+  unsigned last = msg_cont.find_first_of('\r', pos_delim);
+
+  msg_cont = msg_cont.substr(pos_delim, last - pos_delim);
 }
 
 
 std::string Message::getField(std::string fieldname){
+  /**
+   * Create a clist holding the fieldname, a list of headers, and 
+   * 
+   * a header section structure to define the header attribute to be fetched
+   */ 
+  clist * headlist = clist_new();
+
+  char field[fieldname.length() + 1];
+
+  copy(fieldname.begin(), fieldname.end(), field);
+
+  field[fieldname.length() + 1] = '\0';
+  
+  clist_append(headlist, field);
+  
+  
+  struct mailimap_header_list* imap_headList = mailimap_header_list_new(headlist);
+
+  struct mailimap_section* headSection = mailimap_section_new_header_fields(imap_headList);
+
+  mailimap_fetch_att* head_att = mailimap_fetch_att_new_body_section(headSection);
+
 
   /**
-   * Display retrieved header data
+   * Create set to fetch a single message, and fetch structure
+   * 
+   * to retrieve only the specific header of the message
+   */ 
+  mailimap_set* set = mailimap_set_new_single(uid);
+  
+  struct mailimap_fetch_type* fetchStruct = mailimap_fetch_type_new_fetch_att_list_empty();
+
+  clist * contents;
+
+
+  mailimap_fetch_type_new_fetch_att_list_add(fetchStruct, head_att);
+
+  std::string ErrMsg = "Unable to retrieve header";
+  
+  check_error( mailimap_uid_fetch(session->imap, set, fetchStruct, &contents), ErrMsg);
+
+  getAtts(contents);
+  
+  /**
+   * Extract field content
    */
-  if (fieldname == "Subject")
-    return subject;
+  extractfield(fieldname);
 
-  else if (fieldname == "From")
-    return from;
+  /**
+   * Deallocate the necessary memory
+   */
+  mailimap_set_free(set);
 
+  
+  if (msg_cont.empty())
+    return "<>";
+  
+  return msg_cont;
 }
 
 
@@ -156,38 +180,36 @@ void Message::deleteFromMailbox(){
   /**
    * Create set to fetch a single message, list of flags and \Deleted flag object
    */
+  
   struct mailimap_set* set = mailimap_set_new_single(uid);
 
   struct mailimap_flag_list* DelFlagList = mailimap_flag_list_new_empty();
 
   struct mailimap_flag* DelFlag = mailimap_flag_new_deleted();
   
-  /**
-   * Add flag to list of flags
-   */
   std::string ErrMsg = "Error deleting message";
   
   check_error( mailimap_flag_list_add(DelFlagList, DelFlag), ErrMsg);
-
+  
   /**
-   * Change message flags (mark as \Deleted)
+   * Change message flags (mark as \Deleted) and remove from mailbox
    */
+  
   struct mailimap_store_att_flags* store_att = mailimap_store_att_flags_new_set_flags(DelFlagList);
 
   check_error( mailimap_uid_store(session->imap, set, store_att), ErrMsg);
 
-  /**
-   * Permanently remove it from the mailbox
-   */
   check_error( mailimap_expunge(session->imap), ErrMsg);
-
+  
+  
   /**
    * Deallocate the necessary memory
    */
+  
   store_att = mailimap_store_att_flags_new(store_att->fl_sign,store_att->fl_silent,DelFlagList);
 
   mailimap_set_free(set);
-
+  
   /**
    * Call for UI update
    */
@@ -239,11 +261,6 @@ void Session::CountMessages() {
 
   check_error(mailimap_status(imap, mailbox.c_str(), StatusAttList, &StatusData), ErrMsg);
 
-  /**
-   * Get the number of messages value from the first clist 
-   *
-   * (from "useful snippets" section)
-   */
   NoMessages =((struct mailimap_status_info*) clist_content(clist_begin(StatusData->st_info_list)))->st_value;
 
   /**
@@ -274,9 +291,7 @@ int Session::getUID(mailimap_msg_att* msg_att) {
 Message** Session::getMessages(){
 
   /**
-   * Obtain number of messages and 
-   * 
-   * initialise the required number of messages instances
+   * Initialise the required number of message instances
    */
   CountMessages();
 
@@ -293,19 +308,11 @@ Message** Session::getMessages(){
   struct mailimap_fetch_type* fetchStruct = mailimap_fetch_type_new_fetch_att_list_empty();
 
   struct mailimap_fetch_att* fetchAtt = mailimap_fetch_att_new_uid();
-
-  /**
-   * Create a clist to hold message attribute information
-   */
+  
   clist* MessageList;
 
   std::string ErrMsg = "Failed to retrieve messages.";
 
-  /**
-   * Add the attribute to the fetch list (or raise error)
-   * 
-   * retrieve message data of the given attribute (or raise error)
-   */
   check_error(mailimap_fetch_type_new_fetch_att_list_add(fetchStruct, fetchAtt), ErrMsg);
 
   check_error(mailimap_fetch(imap, set, fetchStruct, &MessageList), ErrMsg);
@@ -313,7 +320,7 @@ Message** Session::getMessages(){
   /**
    * For each message, obtain UID from the list of attributes of the clist element
    */
-  size_t count = 0;
+  int count = 0;
   
   for ( clistiter* msg_iter = clist_begin(MessageList); msg_iter != nullptr; msg_iter = clist_next(msg_iter) ) {
     
@@ -333,18 +340,15 @@ Message** Session::getMessages(){
     }
   }
 
-  /**
-   * Add null pointer to end messages list
-   */
   messages[count] = nullptr;
-
+      
   /**
    * Deallocate the necessary memory
    */
+  
   mailimap_fetch_list_free(MessageList);
   mailimap_fetch_type_free(fetchStruct);
   mailimap_set_free(set);
-  
 
   return messages;
 }
@@ -352,9 +356,6 @@ Message** Session::getMessages(){
 
 void Session::connect(std::string const& server, size_t port){
 
-  /**
-   * Establish Socket (or raise error)
-   */
   std::string ErrMsg = "No server connection.";
 
   check_error(mailimap_socket_connect(imap, server.c_str(), port), ErrMsg);
@@ -362,9 +363,6 @@ void Session::connect(std::string const& server, size_t port){
 
 void Session::login(std::string const& userid, std::string const& password){
 
-  /**
-   * Log in (or raise error)
-   */
   std::string ErrMsg = "Login Error.";
 
   check_error(mailimap_login(imap, userid.c_str(), password.c_str()), ErrMsg);
@@ -375,8 +373,6 @@ void Session::selectMailbox(std::string const& Mailbox){
 
   /**
    * Save mailbox name (used to retrieve number of messages in mailbox)
-   * 
-   * Select mailbox (or raise error)
    */
   mailbox = Mailbox;
   

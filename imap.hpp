@@ -37,11 +37,7 @@ namespace IMAP {
      */
     int uid;
     
-    std::string body;
-
-    std::string subject;
-
-    std::string from;
+    std::string msg_cont;
 
     /**
      * Lambda without parameter or return to call updateUI
@@ -51,9 +47,9 @@ namespace IMAP {
     /*
      * Member functions to retrieve attributes data
      */
-    void normform(clist * fromlist);
-    
-    void getAtts(struct mailimap_msg_att* msg_att);
+    void getAtts(clist* contents);
+
+    void extractfield(const std::string & field);
     
   public:
 
