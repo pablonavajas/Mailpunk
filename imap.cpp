@@ -15,10 +15,8 @@
 using namespace std;
 using namespace IMAP;
 
-/**
- * In-line constructor definition for updateUI function
- */
-Message::Message(Session* Session, int UID): session(Session) {
+
+Message::Message(Session* Session, int UID) {
   /**
    * Initialise Mesage data members in constructor
    */
@@ -166,44 +164,46 @@ std::string Message::getField(std::string fieldname){
 
 
 void Message::deleteFromMailbox(){
-  
-  /**
-   * Create set to fetch a single message, list of flags and \Deleted flag object
-   */
-  struct mailimap_set* set = mailimap_set_new_single(uid);
 
-  struct mailimap_flag_list* DelFlagList = mailimap_flag_list_new_empty();
-
-  struct mailimap_flag* DelFlag = mailimap_flag_new_deleted();
-  
-  std::string ErrMsg = "Error deleting message";
-  
-  check_error( mailimap_flag_list_add(DelFlagList, DelFlag), ErrMsg);
-  
-  /**
-   * Change message flags (mark as \Deleted) and remove from mailbox
-   */
-  
-  struct mailimap_store_att_flags* store_att = mailimap_store_att_flags_new_set_flags(DelFlagList);
-
-  check_error( mailimap_uid_store(session->imap, set, store_att), ErrMsg);
-
-  check_error( mailimap_expunge(session->imap), ErrMsg);
-  
-  /**
-   * Deallocate the necessary memory
-   */
-  mailimap_store_att_flags_free(store_att);
-  
-  mailimap_set_free(set);
-
-  session->deleteExcept(uid);
-  /**
-   * Call for UI update
-   */
-  session->updateUI();
-  
-  delete this;
+  if (session->NoMessages > 1) {
+    /**
+     * Create set to fetch a single message, list of flags and \Deleted flag object
+     */
+    struct mailimap_set* set = mailimap_set_new_single(uid);
+    
+    struct mailimap_flag_list* DelFlagList = mailimap_flag_list_new_empty();
+    
+    struct mailimap_flag* DelFlag = mailimap_flag_new_deleted();
+    
+    std::string ErrMsg = "Error deleting message";
+    
+    check_error( mailimap_flag_list_add(DelFlagList, DelFlag), ErrMsg);
+    
+    /**
+     * Change message flags (mark as \Deleted) and remove from mailbox
+     */
+    
+    struct mailimap_store_att_flags* store_att = mailimap_store_att_flags_new_set_flags(DelFlagList);
+    
+    check_error( mailimap_uid_store(session->imap, set, store_att), ErrMsg);
+    
+    check_error( mailimap_expunge(session->imap), ErrMsg);
+    
+    /**
+     * Deallocate the necessary memory
+     */
+    mailimap_store_att_flags_free(store_att);
+    
+    mailimap_set_free(set);
+    
+    session->deleteExcept(uid);
+    /**
+     * Call for UI update
+     */
+    session->updateUI();
+    
+    delete this;
+  }
 }
 
 
