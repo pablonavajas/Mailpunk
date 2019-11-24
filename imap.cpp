@@ -165,7 +165,7 @@ std::string Message::getField(std::string fieldname){
 
 void Message::deleteFromMailbox(){
 
-  if (session->NoMessages > 1) {
+  if (session->NoMessages > 0) {
     /**
      * Create set to fetch a single message, list of flags and \Deleted flag object
      */
@@ -228,7 +228,8 @@ Session::~Session(){
   /**
    * Free structures from IMAP session and logout
    */
-  deleteExcept(-1);
+  if (NoMessages > 0)
+    deleteExcept(-1);
   
   mailimap_logout(imap);
   mailimap_free(imap);
